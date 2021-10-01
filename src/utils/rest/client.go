@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,7 +46,7 @@ func NewClient(baseURL string) (*Client, error) {
 	return NewClientFromHTTP(defaultClient, baseURL)
 }
 
-func (c *Client) NewRequest(method string, path string, query map[string]string) (*http.Request, error) {
+func (c *Client) NewRequest(method string, path string, query map[string]string, body interface{}) (*http.Request, error) {
 	clientErr := &Error{}
 
 	fullURL, err := c.url.Parse(path)
@@ -62,7 +63,16 @@ func (c *Client) NewRequest(method string, path string, query map[string]string)
 		fullURL.RawQuery = q.Encode()
 	}
 
-	req, err := http.NewRequest(method, fullURL.String(), nil)
+	var bodyToSend io.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		bodyToSend = bytes.NewBuffer(bodyBytes)
+	}
+
+	req, err := http.NewRequest(method, fullURL.String(), bodyToSend)
 	if err != nil {
 		clientErr.Err = err
 		return nil, clientErr

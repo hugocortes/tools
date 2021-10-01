@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	appPipelinePath = "/applications/%s/pipelines"
-	pipelinePath    = "/pipelines/%s"
+	applicationPipelineConfigPath = "/applications/%s/pipelineConfigs"
+	applicationPipelinePath       = "/applications/%s/pipelines"
+	pipelinesPath                 = "/pipelines"
+	pipelinePath                  = "/pipelines/%s"
 )
 
 type repo struct {
@@ -54,41 +56,66 @@ func createHTTPClient() (*http.Client, error) {
 	}, nil
 }
 
-func (r *repo) addAuthn(req *http.Request) {
+func (r *repo) addHeaders(req *http.Request) {
 	req.Header.Set("authorization", r.accessToken)
+	req.Header.Set("Content-Type", "application/json")
 }
 
-func (r *repo) GetApplicationPipelineExecutions(ctx context.Context, appID string) ([]*domain.PipelineExecution, error) {
+func (r *repo) CreatePipeline(ctx context.Context, pipelineConfig *domain.PipelineConfig) (*domain.PipelineConfig, error) {
+	path := pipelinesPath
+
+	req, err := r.rest.NewRequest("POST", path, nil, pipelineConfig)
+	if err != nil {
+		return nil, err
+	}
+	r.addHeaders(req)
+
+	newConfig := &domain.PipelineConfig{}
+	_, err = r.rest.Do(ctx, req, newConfig)
+	return newConfig, err
+}
+
+func (r *repo) GetApplicationPipelineConfigs(ctx context.Context, application string) ([]*domain.PipelineConfig, error) {
+	path := fmt.Sprintf(applicationPipelineConfigPath, application)
+
+	req, err := r.rest.NewRequest("GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	r.addHeaders(req)
+
+	pipelineConfigs := &[]*domain.PipelineConfig{}
+	_, err = r.rest.Do(ctx, req, pipelineConfigs)
+	return *pipelineConfigs, err
+}
+
+func (r *repo) GetApplicationPipelineExecutions(ctx context.Context, application string) ([]*domain.PipelineExecution, error) {
 	query := map[string]string{
 		"expanded": "true",
 		"limit":    "50",
 	}
-	path := fmt.Sprintf(appPipelinePath, appID)
+	path := fmt.Sprintf(applicationPipelinePath, application)
 
-	req, err := r.rest.NewRequest("GET", path, query)
+	req, err := r.rest.NewRequest("GET", path, query, nil)
 	if err != nil {
 		return nil, err
 	}
-	r.addAuthn(req)
+	r.addHeaders(req)
 
 	executions := &[]*domain.PipelineExecution{}
-	_, err = r.rest.Do(context.Background(), req, executions)
-	if err != nil {
-		return nil, err
-	}
-
-	return *executions, nil
+	_, err = r.rest.Do(ctx, req, executions)
+	return *executions, err
 }
 
 func (r *repo) DeletePipelineExecution(ctx context.Context, ID string) error {
 	path := fmt.Sprintf(pipelinePath, ID)
 
-	req, err := r.rest.NewRequest("DELETE", path, nil)
+	req, err := r.rest.NewRequest("DELETE", path, nil, nil)
 	if err != nil {
 		return err
 	}
-	r.addAuthn(req)
+	r.addHeaders(req)
 
-	_, err = r.rest.Do(context.Background(), req, nil)
+	_, err = r.rest.Do(ctx, req, nil)
 	return err
 }

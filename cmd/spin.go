@@ -16,24 +16,24 @@ var (
 )
 
 func setup(ctx context.Context) (domain.SpinUsecase, error) {
-	orcaRepo, err := _spinRepo.New(ctx, gateURL, token)
+	spinRepo, err := _spinRepo.New(ctx, gateURL, token)
 	if err != nil {
 		return nil, err
 	}
-	return _spinUsecase.New(ctx, orcaRepo)
+	return _spinUsecase.New(ctx, spinRepo)
 }
 
 func validateGlobalFlags() error {
 	if token == "" {
-		return errors.New(("token is required"))
+		return errors.New("token is required")
 	}
 	if gateURL == "" {
-		return errors.New(("gate is required"))
+		return errors.New("gate is required")
 	}
 	return nil
 }
 
-func copy() *cobra.Command {
+func copyTemplate() *cobra.Command {
 	var from string
 	var to string
 	var pipeline string
@@ -52,9 +52,9 @@ func copy() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:     "copy",
-		Aliases: []string{"cp"},
-		Short:   "copy a pipeline to another application",
+		Use:     "copy-template",
+		Aliases: []string{"cpt"},
+		Short:   "copy a templated pipeline to another application",
 		RunE: func(c *cobra.Command, args []string) error {
 			if err := validateGlobalFlags(); err != nil {
 				return err
@@ -62,13 +62,17 @@ func copy() *cobra.Command {
 			if err := validateCmdFlags(); err != nil {
 				return err
 			}
-
-			return nil
+			ctx := context.Background()
+			spinUsecase, err := setup(ctx)
+			if err != nil {
+				return err
+			}
+			return spinUsecase.CopyTemplatedPipeline(ctx, pipeline, from, to)
 		},
 	}
 	cmd.PersistentFlags().StringVarP(&from, "from", "f", "", "from application")
-	cmd.PersistentFlags().StringVarP(&to, "to", "t", "", "to application")
-	cmd.PersistentFlags().StringVarP(&from, "pipeline", "p", "", "pipeline to copy")
+	cmd.PersistentFlags().StringVarP(&to, "to", "", "", "to application")
+	cmd.PersistentFlags().StringVarP(&pipeline, "pipeline", "p", "", "pipeline to copy")
 
 	return cmd
 }
@@ -96,11 +100,11 @@ func clean() *cobra.Command {
 			}
 
 			ctx := context.Background()
-			orcaUsecase, err := setup(ctx)
+			spinUsecase, err := setup(ctx)
 			if err != nil {
 				return err
 			}
-			return orcaUsecase.RemoveNonRunningExecutions(ctx, app)
+			return spinUsecase.RemoveNonRunningExecutions(ctx, app)
 		},
 	}
 
@@ -119,13 +123,11 @@ func spinCmd() *cobra.Command {
 	spinCmd.PersistentFlags().StringVarP(&gateURL, "gate", "g", "", "gate url")
 	spinCmd.PersistentFlags().StringVarP(&token, "token", "t", "", "oauth2 access token")
 
-	// spinCmd.PersistentFlags().StringVarP(&orcaURL, "orca", "o", "", "orca url")
-
 	cleanCmd := clean()
-	copyCmd := copy()
+	copyTemplate := copyTemplate()
 
 	spinCmd.AddCommand(cleanCmd)
-	spinCmd.AddCommand(copyCmd)
+	spinCmd.AddCommand(copyTemplate)
 
 	return spinCmd
 }
