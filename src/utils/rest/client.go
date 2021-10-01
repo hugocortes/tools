@@ -1,13 +1,15 @@
-package api
+package rest
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type Error struct {
@@ -18,10 +20,10 @@ type Error struct {
 
 func (e *Error) Error() string {
 	req := fmt.Sprintf("%v %v:", e.Request.Method, e.Request.URL.Path)
-	if e.Err != nil {
-		return fmt.Sprintf("%s %v", req, e.Err.Error())
+	if e.Err != nil && e.Response != nil {
+		return fmt.Sprintf("%s %d %v", req, e.Response.StatusCode, e.Err.Error())
 	}
-	return fmt.Sprintf("%s %d %v", req, e.Response.StatusCode, e.Err.Error())
+	return fmt.Sprintf("%s %v", req, e.Err.Error())
 }
 
 type Client struct {
@@ -29,23 +31,18 @@ type Client struct {
 	http *http.Client
 }
 
-func NewClientFromHTTP(httpClient *http.Client, url string) (*Client, error) {
-	client, err := NewClient(url)
-	if err != nil {
-		return nil, err
-	}
-
-	client.http = httpClient
-	return client, nil
-}
-
-func NewClient(baseURL string) (*Client, error) {
-	client := &Client{http: http.DefaultClient}
+func NewClientFromHTTP(httpClient *http.Client, baseURL string) (*Client, error) {
+	client := &Client{http: httpClient}
 
 	var err error
 	client.url, err = url.Parse(baseURL)
 
 	return client, err
+}
+
+func NewClient(baseURL string) (*Client, error) {
+	defaultClient := http.DefaultClient
+	return NewClientFromHTTP(defaultClient, baseURL)
 }
 
 func (c *Client) NewRequest(method string, path string, query map[string]string) (*http.Request, error) {
@@ -96,7 +93,13 @@ func (c *Client) Do(ctx context.Context, req *http.Request, model interface{}) (
 	if resp.StatusCode >= 400 {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err == nil {
-			json.Unmarshal(data, clientError)
+			contentType := resp.Header.Get("Content-Type")
+			if strings.HasPrefix(contentType, "text/html") {
+				clientError.Err = errors.New(string(data[:]))
+			} else {
+				json.Unmarshal(data, clientError)
+			}
+
 		} else {
 			clientError.Err = err
 		}
